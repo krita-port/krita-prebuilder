@@ -1,6 +1,6 @@
 # Building and verifying the SDK
 
-The current recipes use Emscripten 7.0.0, Qt 6.10.2 and KDE Frameworks 6.24.0. Use Emscripten from your current environment (`EMSDK` or `emcc` on `PATH`). `EMSDK_ROOT` is an optional override. The Emscripten version is stored in `.emscripten-version`. Qt versions are read from `sources.json`; all Qt module versions must agree with its `qtbase` entry. The shared installation is read without activation changes. The host build requires Python 3.12 or newer, CMake, Ninja, a native C/C++ compiler, gperf and pkg-config; the workflow records its environment and installs its build utilities.
+The current recipes use Emscripten 7.0.0, Qt 6.10.2 and KDE Frameworks 6.24.0. Both host and Wasm Qt builds use Qt’s external archive API: its `gzip -n` command omits the timestamp from the embedded MIME database. Use Emscripten from your current environment (`EMSDK` or `emcc` on `PATH`). `EMSDK_ROOT` is an optional override. The Emscripten version is stored in `.emscripten-version`. Qt versions are read from `sources.json`; all Qt module versions must agree with its `qtbase` entry. The shared installation is read without activation changes. The host build requires Python 3.12 or newer, CMake, Ninja, a native C/C++ compiler, gperf and pkg-config; the workflow records its environment and installs its build utilities.
 
 Install the Python requirements in an active environment before building:
 
@@ -66,11 +66,13 @@ The dependency probe checks direct comparisons, sort-key lifetimes and copies, C
 
 ## Verification boundary
 
-CI runs C/C++ formatting and Python checks first. It then builds and packages the SDK, internationalization supplement and QtCore correction, uploads them, and runs archive checks, catalog and packaging comparisons, and runtime probes. Failed verification does not prevent downloading the uploaded artifacts. A packaged-SDK probe rebuild temporarily hides the original target prefix and uses the extracted SDK with its compiler cache frozen, then runs the resulting probe in Firefox. Repeat packaging uses separate `build/package-repeat/` outputs and compares them with the uploaded archives.
+The `build` job runs C/C++ formatting and Python checks first, builds and uploads the SDK, internationalization supplement and QtCore correction, and prepares a separate runtime-probe artifact before archive, catalog and packaging checks. The relocation probe is compiled with the original target prefix temporarily hidden and the extracted SDK’s compiler cache frozen. Repeat packaging uses separate `build/package-repeat/` outputs and compares them with the uploaded archives.
+
+The `test` job downloads the already-built runtime probes and runs them in Firefox and Node without rebuilding the SDK or installing Emscripten. If only this job fails, use GitHub Actions’ **Re-run failed jobs** to retry it with the existing build artifacts. Probe artifacts are for CI diagnostics and are not published in the Nightly release. The `publish` job waits for both `build` and `test` to pass.
 
 After all checks pass, pushes to `main` and manual runs on `main` create or update the `latest` tag and the `Nightly build` prerelease. It contains the SDK, internationalization and QtCore correction archives, with no separate source archives or checksum assets. Downloads can be verified using the asset digests returned by the GitHub API. PRs and manual runs on other branches do not publish.
 
-A fresh build in this repository and a remote CI run have not yet been verified. Source checksums, target-archive checks and repeated packaging are distinct checks. `--check-repeat` compares packaging of one staged tree, not independent compilation. A cold build, actual browser execution, artifact relocation and two independently compiled matching SDKs must be verified separately. The current workflow uses Ubuntu 26.04 and `emscripten-core/setup-emsdk@v16`, reading its Emscripten version from `.emscripten-version`; its host compiler and complete build image are not yet fully pinned.
+These checks do not establish byte-identical independent compilation. The host compiler, complete build image and all generated compiler caches are not yet fully pinned or reproducible.
 
 ## C and C++ formatting
 

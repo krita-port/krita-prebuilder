@@ -421,6 +421,10 @@ def build(component: str, jobs: int) -> None:
                 "-no-feature-glib",
                 "-no-feature-icu",
             ]
+        # Qt's external gzip path uses -n, omitting the embedded MIME timestamp.
+        if not wasm:
+            qt_options.append("--")
+        qt_options.append("-DQT_AVOID_CMAKE_ARCHIVING_API=ON")
         run([*command, source / "configure", *qt_options], cwd=directory)
         run([*command, "cmake", "--build", directory, "--parallel", jobs])
         run([*command, "cmake", "--install", directory])
