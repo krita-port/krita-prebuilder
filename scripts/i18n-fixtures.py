@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Own fixtures exercising the real prebuilt gettext/KI18n runtime."""
 
-import json
 import subprocess
 
+import polib
 from i18n import PREFIX
 from sdk import BUILD_DIR
 
@@ -18,13 +18,13 @@ formats = {
 }
 
 
-def quote(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
 for language, plural in formats.items():
-    header = f"Language: {language}\nContent-Type: text/plain; charset=UTF-8\nPlural-Forms: {plural}\n"
-    text = 'msgid ""\nmsgstr ' + quote(header) + "\n\n"
+    catalog = polib.POFile()
+    catalog.metadata = {
+        "Language": language,
+        "Content-Type": "text/plain; charset=UTF-8",
+        "Plural-Forms": plural,
+    }
     entries_by_language: dict[str, list[tuple[str, ...]]] = {
         "zh_CN": [
             ("Probe", "探针"),
@@ -37,22 +37,31 @@ for language, plural in formats.items():
         "fr": [("French only", "Seulement français")],
         "ar": [],
     }
-    for entry in entries_by_language[language]:
-        if len(entry) == 3:
-            text += "msgctxt " + quote(entry[2]) + "\n"
-        text += "msgid " + quote(entry[0]) + "\nmsgstr " + quote(entry[1]) + "\n\n"
+    catalog.extend(
+        polib.POEntry(
+            msgid=entry[0],
+            msgstr=entry[1],
+            msgctxt=entry[2] if len(entry) == 3 else None,
+        )
+        for entry in entries_by_language[language]
+    )
     forms = {
         "zh_CN": ["%1 项"],
         "ru": ["%1 one", "%1 few", "%1 many"],
         "ar": ["%1 zero", "%1 one", "%1 two", "%1 few", "%1 many", "%1 other"],
     }.get(language)
     if forms:
-        text += 'msgid "%1 item"\nmsgid_plural "%1 items"\n'
-        text += "".join(f"msgstr[{i}] {quote(form)}\n" for i, form in enumerate(forms))
+        catalog.append(
+            polib.POEntry(
+                msgid="%1 item",
+                msgid_plural="%1 items",
+                msgstr_plural=dict(enumerate(forms)),
+            )
+        )
     folder = output / "locale" / language
     (folder / "LC_MESSAGES").mkdir(parents=True, exist_ok=True)
     po = folder / "fixture.po"
-    po.write_text(text)
+    catalog.save(str(po))
     subprocess.run(
         [
             PREFIX / "host/bin/msgfmt",

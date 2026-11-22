@@ -83,6 +83,30 @@ jobs:
           path: cache/prebuilt/
           if-no-files-found: error
 
+      - name: Build relocated SDK probe
+        run: |
+          mv build/install-jspi/target build/install-jspi/target-original
+          trap 'mv build/install-jspi/target-original build/install-jspi/target' EXIT
+          KRITA_SDK_DIR="$PWD/build/qtcore-ci-base" \
+            SDK_PROBE_BUILD_DIR="$PWD/build/relocated-sdk-probe" \
+            scripts/build-dependency-probe
+
+      - name: Package runtime probes
+        run: |
+          shopt -s nullglob
+          files=(
+            build/jspi/{sdk-smoke,sdk-deps,event-loop-probe-sdk,sdk-i18n}/*.{html,js,wasm,data,svg}
+            build/relocated-sdk-probe/*.{html,js,wasm,data,svg}
+          )
+          tar -czf build/browser-probes.tar.gz "${files[@]}"
+
+      - name: Upload runtime probes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-probes-${{ github.sha }}
+          path: build/browser-probes.tar.gz
+          if-no-files-found: error
+
       - name: Verify target archives and metadata
         run: scripts/check-target.py
 
@@ -98,17 +122,31 @@ jobs:
           scripts/i18n.py package --catalogs build/i18n/catalogs-a --tag ci --output build/package-repeat/i18n --check-repeat
           cmp cache/prebuilt/krita-wasm-i18n-ci.tar.gz build/package-repeat/i18n/krita-wasm-i18n-ci.tar.gz
 
-      - name: Verify packaged SDK relocation
-        run: |
-          mv build/install-jspi/target build/install-jspi/target-original
-          trap 'mv build/install-jspi/target-original build/install-jspi/target' EXIT
-          KRITA_SDK_DIR="$PWD/build/qtcore-ci-base" \
-            SDK_PROBE_BUILD_DIR="$PWD/build/relocated-sdk-probe" \
-            scripts/build-dependency-probe
-          scripts/test-browser-probe.py build/relocated-sdk-probe --expect SDK_DEPS_OK
+  test:
+    needs: build
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+
+      - name: Download runtime probes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sdk-probes-${{ github.sha }}
+          path: build
+
+      - name: Extract runtime probes
+        run: tar -xzf build/browser-probes.tar.gz
 
       - name: Verify SDK probes in Firefox
         run: |
+          scripts/test-browser-probe.py build/relocated-sdk-probe --expect SDK_DEPS_OK
           scripts/test-browser-probe.py build/jspi/sdk-smoke --expect SDK_SMOKE_OK
           scripts/test-browser-probe.py build/jspi/sdk-deps --expect SDK_DEPS_OK
           scripts/test-browser-probe.py build/jspi/event-loop-probe-sdk --expect LOOP_PROBE_OK
@@ -122,7 +160,7 @@ jobs:
           node gettext.js POSIX
 
   publish:
-    needs: build
+    needs: [build, test]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     permissions:

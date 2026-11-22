@@ -1,3 +1,5 @@
+polib==1.2.0
+types-polib==1.2.0.20261115
 ruff==0.17.5
 mypy==2.4.1
 # Pin the type checker dependency graph used by local checks and CI.
