@@ -1,0 +1,25 @@
+Subject: [PATCH] wasm: Queue browser resize events
+
+Browser window and VisualViewport resize callbacks enter Wasm directly.
+Updating screen geometry there can call application code that uses JSPI
+imports, such as synchronizing a file while handling a resize event.
+Post the resize to the Qt event loop so the handler can suspend.
+
+diff --git a/src/plugins/platforms/wasm/qwasmintegration.cpp b/src/plugins/platforms/wasm/qwasmintegration.cpp
+--- a/src/plugins/platforms/wasm/qwasmintegration.cpp
++++ b/src/plugins/platforms/wasm/qwasmintegration.cpp
+@@ -435,8 +435,12 @@
+ 
+ void QWasmIntegration::resizeAllScreens()
+ {
+-    for (const auto &elementAndScreen : m_screens)
+-        elementAndScreen.wasmScreen->updateQScreenSize();
++    // Browser resize listeners are not JSPI entry points. Publish geometry
++    // through the Qt event loop, where application resize handlers can suspend.
++    QMetaObject::invokeMethod(this, [this] {
++        for (const auto &elementAndScreen : m_screens)
++            elementAndScreen.wasmScreen->updateQScreenSize();
++    }, Qt::QueuedConnection);
+ }
+ 
+ void QWasmIntegration::loadLocalFontFamilies(emscripten::val families)

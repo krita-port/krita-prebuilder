@@ -4,3 +4,4 @@
 0003-wasm-handle-nested-native-event-dispatch.patch
 0004-wasm-snapshot-events-before-deferred-dispatch.patch
 0005-wasm-use-browser-collation.patch
+0006-wasm-queue-browser-resize-events.patch
