@@ -1,11 +1,13 @@
-Subject: [PATCH] Handle reentrant Wasm native-event dispatch
+Subject: [PATCH] Handle reentrant and stale Wasm native events
 
-Related upstream change:
+Related upstream changes:
 https://github.com/qt/qtbase/commit/3a217d2592602fb4bdef28d721871a161ecfb16f
+https://github.com/qt/qtbase/commit/f410898d95218adc522bc6dac7cc4649fea52aab
 
 A nested event loop may drain the shared pending-event queue. Check its
 remaining length before shifting another event. Unlike the upstream change,
-keep the initial batch bound and report how many events were dispatched.
+keep the initial batch bound. Skip queued events whose handler was removed,
+and report how many events were consumed.
 
 diff --git a/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp b/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp
 --- a/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp
@@ -21,8 +23,10 @@ diff --git a/src/corelib/platform/wasm/qwasmsuspendresumecontrol.cpp b/src/corel
          // Grab one event (handler and arg), and call it
          emscripten::val event = pendingEvents.call<val>("shift");
          auto it = m_eventHandlers.find(event["index"].as<int>());
-         Q_ASSERT(it != m_eventHandlers.end());
-         it->second(event["arg"]);
+-        Q_ASSERT(it != m_eventHandlers.end());
+-        it->second(event["arg"]);
++        if (it != m_eventHandlers.end())
++            it->second(event["arg"]);
 +        ++sent;
      }
 -    return count;
